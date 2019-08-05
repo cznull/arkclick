@@ -5,6 +5,7 @@
 #include "arkclick.h"
 #include <gl/glew.h>
 #include <opencv2/opencv.hpp>
+#include <immintrin.h>  
 
 
 #ifdef _DEBUG
@@ -39,6 +40,7 @@ BITMAP bmp;
 RECT bbrect;
 unsigned char* data;
 cv::Mat tar;
+float* imgf, * tarf;
 
 // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
@@ -114,45 +116,49 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 				PrintWindow(bbhwnd, bbhdcc, PW_CLIENTONLY);
 				GetBitmapBits(hbitmap, bmp.bmHeight * bmp.bmWidthBytes, data);
 				int i, j;
+				for (i = 0; i < 8; i++) {
+					for (j = 0; j < 8; j++) {
+						tarf[(i * 8 + j) * 4] = (float)tar.data[(i * 2 * 16 + j * 2) * 3] + (float)tar.data[(i * 2 * 16 + j * 2 + 1) * 3] + (float)tar.data[(i * 2 * 16 + j * 2 + 16) * 3] + (float)tar.data[(i * 2 * 16 + j * 2 + 17) * 3];
+						tarf[(i * 8 + j) * 4 + 1] = (float)tar.data[(i * 2 * 16 + j * 2) * 3 + 1] + (float)tar.data[(i * 2 * 16 + j * 2 + 1) * 3 + 1] + (float)tar.data[(i * 2 * 16 + j * 2 + 16) * 3 + 1] + (float)tar.data[(i * 2 * 16 + j * 2 + 17) * 3 + 1];
+						tarf[(i * 8 + j) * 4 + 2] = (float)tar.data[(i * 2 * 16 + j * 2) * 3 + 2] + (float)tar.data[(i * 2 * 16 + j * 2 + 1) * 3 + 2] + (float)tar.data[(i * 2 * 16 + j * 2 + 16) * 3 + 2] + (float)tar.data[(i * 2 * 16 + j * 2 + 17) * 3 + 2];
+						tarf[(i * 8 + j) * 4 + 3] = 0.0;
+					}
+				}
+				for (i = 0; i < bmp.bmHeight / 2; i++) {
+					for (j = 0; j < bmp.bmWidth/2; j++) {
+						imgf[(i * (bmp.bmWidth/2) + j) * 4] = (float)data[(i * 2 * bmp.bmWidth + j * 2) *4] + (float)data[(i * 2 * bmp.bmWidth + j * 2 + 1) *4] + (float)data[(i * 2 * bmp.bmWidth + j * 2 + bmp.bmWidth) *4] + (float)data[(i * 2 * bmp.bmWidth + j * 2 + bmp.bmWidth + 1) *4];
+						imgf[(i * (bmp.bmWidth / 2) + j) * 4 + 1] = (float)data[(i * 2 * bmp.bmWidth + j * 2) *4 + 1] + (float)data[(i * 2 * bmp.bmWidth + j * 2 + 1) *4 + 1] + (float)data[(i * 2 * bmp.bmWidth + j * 2 + bmp.bmWidth) *4 + 1] + (float)data[(i * 2 * bmp.bmWidth + j * 2 + bmp.bmWidth + 1) *4 + 1];
+						imgf[(i * (bmp.bmWidth / 2) + j) * 4 + 2] = (float)data[(i * 2 * bmp.bmWidth + j * 2) *4 + 2] + (float)data[(i * 2 * bmp.bmWidth + j * 2 + 1) *4 + 2] + (float)data[(i * 2 * bmp.bmWidth + j * 2 + bmp.bmWidth) *4 + 2] + (float)data[(i * 2 * bmp.bmWidth + j * 2 + bmp.bmWidth + 1) *4 + 2];
+						imgf[(i * (bmp.bmWidth / 2) + j) * 4 + 3] = 0.0;
+					}
+				}
 				int m, l;
-				int min, mx, my,sum;
-				min = 255 * 255 * 24 * 24+1;
-				for (i = 0; i < 1080 - 23; i++) {
-					for (j = 0; j < bmp.bmWidth - 23; j++) {
-						sum = 0;
-						for (m = 0; m < 24; m+=4) {
-							for (l = 0; l < 24; l+=4) {
-								int r, g, b;
-								r = data[((i + m) * bmp.bmWidth + (j + l)) * 4 + 1] - tar.data[(m * 24 + l) * 3 + 2];
-								g = data[((i + m) * bmp.bmWidth + (j + l)) * 4 + 2] - tar.data[(m * 24 + l) * 3 + 1];
-								b = data[((i + m) * bmp.bmWidth + (j + l)) * 4] - tar.data[(m * 24 + l) * 3];
-								sum += r * r + g * g + b * b;
+				int  mx, my;
+				__m256 sum;
+				float min, sumf;
+				min = 255 * 4 * 255 * 4 * 8 * 8 * 3 + 1;
+				for (i = 0; i < bmp.bmHeight / 2 - 7; i++) {
+					for (j = 0; j < bmp.bmWidth/2 - 7; j++) {
+						sum = _mm256_set1_ps(0.0f);
+						for (m = 0; m < 8; m+=1) {
+							for (l = 0; l < 8; l+=2) {
+								__m256 x1, x2, x3, x4;
+								x1 = _mm256_loadu_ps(imgf + ((i + m) * (bmp.bmWidth / 2) + j + l) * 4);
+								x2 = _mm256_loadu_ps(tarf + (m * 8 + l) * 4);
+								x3 = _mm256_sub_ps(x1, x2);
+								sum= _mm256_add_ps(sum, _mm256_mul_ps(x3, x3));
 							}
 						}
-						if (sum < min) {
-							min = sum;
-							my = i;
-							mx = j;
-						}
-						sum = 0;
-						for (m = 0; m < 24; m += 4) {
-							for (l = 0; l < 24; l += 4) {
-								int r, g, b;
-								r = data[((i + m) * bmp.bmWidth + (j + l)) * 4 + 1] - tar.data[(m * 24 + 23-l) * 3 + 2];
-								g = data[((i + m) * bmp.bmWidth + (j + l)) * 4 + 2] - tar.data[(m * 24 + 23-l) * 3 + 1];
-								b = data[((i + m) * bmp.bmWidth + (j + l)) * 4] - tar.data[(m * 24 + 23-l) * 3];
-								sum += r * r + g * g + b * b;
-							}
-						}
-						if (sum < min) {
-							min = sum;
-							my = i;
-							mx = j;
+						sumf = sum.m256_f32[0] + sum.m256_f32[1] + sum.m256_f32[2] + sum.m256_f32[3] + sum.m256_f32[4] + sum.m256_f32[5] + sum.m256_f32[6] + sum.m256_f32[7];
+						if (sumf < min) {
+							min = sumf;
+							my = i*2;
+							mx = j*2;
 						}
 					}
 				}
-				for (m = 0; m < 24; m += 1) {
-					for (l = 0; l < 24; l += 1) {
+				for (m = 0; m < 16; m += 1) {
+					for (l = 0; l < 16; l += 1) {
 						data[((my + m) * bmp.bmWidth + (mx + l)) * 4] = 255;
 						data[((my + m) * bmp.bmWidth + (mx + l)) * 4+1] = 0;
 						data[((my + m) * bmp.bmWidth + (mx + l)) * 4 + 2] = 0;
@@ -162,13 +168,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bmp.bmWidth, bmp.bmHeight, 0, GL_BGRA, GL_UNSIGNED_BYTE, data);
 				draw();
 				glBindTexture(GL_TEXTURE_2D, 0);
-				if (min < 160000) {
+				if (min < 4500000) {
 					//SendMessageA(bbhwnd1, WM_LBUTTONDOWN, 0, mx+12 + ((my+12) << 16));
 					//SendMessageA(bbhwnd1, WM_LBUTTONUP, 0, mx+12 + ((my+12) << 16)); 
-					SetCursorPos(mx + 12,my+12); 
+					SetCursorPos(mx +8,my+8); 
 					mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
 					mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
-					Sleep(900);
+					Sleep(1000);
+				}
+				else {
+					Sleep(100);
 				}
 			}
 			else {
@@ -331,6 +340,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		GetWindowRect(hWnd, &rb);
 		MoveWindow(hWnd, 0, 0, bmp.bmWidth / 4 + rb.right - ra.right + ra.left - rb.left, bmp.bmHeight / 4 + rb.bottom - ra.bottom + ra.top - rb.top, true);
 		tar=cv::imread("C:/files/0.png");
+		tarf = (float*)malloc(8 * 8 * 4 * 4);
+		imgf = (float*)malloc((bmp.bmHeight/2) * (bmp.bmWidth/2) * 4 * 4);
 		break;
 	}
 	case WM_SIZE: {
